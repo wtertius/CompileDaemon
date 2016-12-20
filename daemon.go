@@ -147,23 +147,43 @@ func build() bool {
 		return true
 	}
 
-	cmd := exec.Command(args[0], args[1:]...)
+	// fmt.Println(args)
 
-	if *flag_build_dir != "" {
-		cmd.Dir = *flag_build_dir
-	} else {
-		cmd.Dir = *flag_directory
+	cmds := [][]string{}
+
+	var start = 0
+	for i := range args {
+		// fmt.Println(args[i])
+		if args[i] == "&&" {
+			cmds = append(cmds, args[start:i])
+			start = i + 1
+		}
+
+	}
+	cmds = append(cmds, args[start:])
+
+	for x := range cmds {
+		fmt.Println(cmds[x])
+
+		cmd := exec.Command(cmds[x][0], cmds[x][1:]...)
+
+		if *flag_build_dir != "" {
+			cmd.Dir = *flag_build_dir
+		} else {
+			cmd.Dir = *flag_directory
+		}
+
+		output, err := cmd.CombinedOutput()
+
+		if err == nil {
+			log.Println(okColor("Build ok."))
+		} else {
+			log.Println(failColor("Error while building:\n"), failColor(string(output)))
+			return false
+		}
 	}
 
-	output, err := cmd.CombinedOutput()
-
-	if err == nil {
-		log.Println(okColor("Build ok."))
-	} else {
-		log.Println(failColor("Error while building:\n"), failColor(string(output)))
-	}
-
-	return err == nil
+	return true
 }
 
 func matchesPattern(pattern *regexp.Regexp, file string) bool {
@@ -268,7 +288,7 @@ func runner(commandTemplate string, buildStarted <-chan string, buildSuccess <-c
 
 		// append %0.s to use format specifier even if not supplied by user
 		// to suppress warning in returned string.
-		command := fmt.Sprintf("%0.s" + commandTemplate, eventPath)
+		command := fmt.Sprintf("%0.s"+commandTemplate, eventPath)
 
 		if !*flag_command_stop {
 			if !<-buildSuccess {
