@@ -74,7 +74,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"gopkg.in/fsnotify.v1"
+	"gopkg.in/fsnotify/fsnotify.v1"
 )
 
 // Milliseconds to wait for the next job to begin after a file change
