@@ -180,18 +180,35 @@ func build() bool {
 		return true
 	}
 
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = *flag_build_dir
+	cmds := [][]string{}
 
-	output, err := cmd.CombinedOutput()
+	var start = 0
+	for i := range args {
+		if args[i] == "&&" {
+			cmds = append(cmds, args[start:i])
+			start = i + 1
+		}
 
-	if err == nil {
-		log.Println(okColor("Build ok."))
-	} else {
-		log.Println(failColor("Error while building:\n"), failColor(string(output)))
+	}
+	cmds = append(cmds, args[start:])
+
+	for _, cmd := range cmds {
+		log.Println(cmd)
+
+		cmd := exec.Command(cmd[0], cmd[1:]...)
+		cmd.Dir = *flag_build_dir
+
+		output, err := cmd.CombinedOutput()
+
+		if err == nil {
+			log.Println(okColor("Build ok."))
+		} else {
+			log.Println(failColor("Error while building:\n"), failColor(string(output)))
+			return false
+		}
 	}
 
-	return err == nil
+	return true
 }
 
 func matchesPattern(pattern *regexp.Regexp, file string) bool {
