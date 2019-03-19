@@ -77,7 +77,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/fsnotify/fsnotify"
+	fsnotify "gopkg.in/fsnotify/fsnotify.v1"
 )
 
 // Milliseconds to wait for the next job to begin after a file change
@@ -253,7 +253,7 @@ func logger(pipeChan <-chan io.ReadCloser) {
 func startCommand(command string) (cmd *exec.Cmd, stdout io.ReadCloser, stderr io.ReadCloser, err error) {
 	args := strings.Split(command, " ")
 	cmd = exec.Command(args[0], args[1:]...)
-	
+
 	if *flag_run_dir != "" {
 		cmd.Dir = *flag_run_dir
 	}
