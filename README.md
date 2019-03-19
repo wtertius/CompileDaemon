@@ -27,6 +27,8 @@ Usage:
 |`-color=_` | false | Colorize the output of the daemon's status messages. |
 |`-log-prefix=_` | true | Prefix all child process output with stdout/stderr labels and log timestamps. |
 |`-graceful-kill=_`| false | On supported platforms, send the child process a SIGTERM to allow it to exit gracefully if possible. |
+|`-graceful-timeout=_`| 3 | Duration (in seconds) to wait for graceful kill to complete. |
+|`-manual-restart=_`| false | Manual restart by typing "r". |
 
 ## Examples
 

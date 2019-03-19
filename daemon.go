@@ -53,6 +53,7 @@ There are command line options.
 	                    allow it to exit gracefully if possible.
 	-graceful-timeout - Duration (in seconds) to wait for graceful kill to complete
 	-verbose          - Print information about watched directories.
+	-manual-restart   - Manual restart by typing "r"
 
 	ACTIONS
 	-build=CCC        – Execute CCC to rebuild when a file changes
@@ -147,6 +148,7 @@ var (
 	flag_gracefulkill    = flag.Bool("graceful-kill", false, "Gracefully attempt to kill the child process by sending a SIGTERM first")
 	flag_gracefultimeout = flag.Uint("graceful-timeout", 3, "Duration (in seconds) to wait for graceful kill to complete")
 	flag_verbose         = flag.Bool("verbose", false, "Be verbose about which directories are watched.")
+	flag_manual_restart  = flag.Bool("manual-restart", false, `Manual restart by typing "r"`)
 
 	// initialized in main() due to custom type.
 	flag_directories   dirList
@@ -474,6 +476,15 @@ func validateFlags() {
 	}
 }
 
+func manualRestarter(manualRestart chan<- struct{}) {
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		if scanner.Text() == "r" {
+			manualRestart <- struct{}{}
+		}
+	}
+}
+
 func main() {
 	flag_directories = make(dirList)
 	flag.Var(&flag_directories, "directory", "Directory to watch for changes")
@@ -503,6 +514,7 @@ func main() {
 	jobs := make(chan string)
 	buildSuccess := make(chan bool)
 	buildStarted := make(chan string)
+	manualRestart := make(chan struct{})
 
 	go builder(jobs, buildStarted, buildSuccess)
 
@@ -510,6 +522,10 @@ func main() {
 		go runner(*flag_command, buildStarted, buildSuccess)
 	} else {
 		go flusher(buildStarted, buildSuccess)
+	}
+
+	if *flag_manual_restart {
+		go manualRestarter(manualRestart)
 	}
 
 	for {
@@ -529,6 +545,9 @@ func main() {
 					}
 				}
 			}
+
+		case <-manualRestart:
+			jobs <- ""
 
 		case err := <-watcher.Errors:
 			if v, ok := err.(*os.SyscallError); ok {
