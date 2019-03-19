@@ -461,7 +461,7 @@ func validateFlags() {
 			default_build_dir := flag_directories.First()
 			flag_build_dir = &default_build_dir
 		} else {
-			log.Fatal("-build-dir is required when specifying multiple watch directeries.\n")
+			log.Fatal("-build-dir is required when specifying multiple watch directories.\n")
 		}
 	}
 
