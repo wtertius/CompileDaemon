@@ -14,6 +14,7 @@ Usage:
 | | | **actions** |
 |`-build=…`   | go build    | Specify the command to run when rebuilding is required.|
 |`-build-dir=…`   | *the -directory value* | Directory to run build command in.  Defaults to directory.|
+|`-build-log=…`   | false | Show stdout from build command.|
 |`-command=…` | *none*      | Specify the command to run after a succesful build. The default is to run nothing. This command is issued with the working directory set to -directory.|
 | | | **file selection** |
 |`-directory=…` | . | Which directory to watch. You may have multiples of this flag.|
