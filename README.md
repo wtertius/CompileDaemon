@@ -29,6 +29,8 @@ Usage:
 |`-graceful-kill=_`| false | On supported platforms, send the child process a SIGTERM to allow it to exit gracefully if possible. |
 |`-graceful-timeout=_`| 3 | Duration (in seconds) to wait for graceful kill to complete. |
 |`-manual-restart=_`| false | Manual restart by typing "r". |
+|`-restart-on-error=_`| false | Restart command if it was finished with error. |
+|`-restart-timeout=_`| 5 | Duration (in seconds) to wait before restart on error. |
 
 ## Examples
 

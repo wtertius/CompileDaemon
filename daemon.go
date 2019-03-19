@@ -54,6 +54,8 @@ There are command line options.
 	-graceful-timeout - Duration (in seconds) to wait for graceful kill to complete
 	-verbose          - Print information about watched directories.
 	-manual-restart   - Manual restart by typing "r"
+	-restart-on-error - Restart command if it was finished with error
+	-restart-timeout  - Duration (in seconds) to wait before restart on error
 
 	ACTIONS
 	-build=CCC        – Execute CCC to rebuild when a file changes
@@ -149,6 +151,8 @@ var (
 	flag_gracefultimeout = flag.Uint("graceful-timeout", 3, "Duration (in seconds) to wait for graceful kill to complete")
 	flag_verbose         = flag.Bool("verbose", false, "Be verbose about which directories are watched.")
 	flag_manual_restart  = flag.Bool("manual-restart", false, `Manual restart by typing "r"`)
+	flag_restartOnError  = flag.Bool("restart-on-error", false, "Restart command if it was finished with error")
+	flag_restartTimeout  = flag.Uint("restart-timeout", 5, "Duration (in seconds) to wait before restart on error")
 
 	// initialized in main() due to custom type.
 	flag_directories   dirList
@@ -318,32 +322,40 @@ func runner(commandTemplate string, buildStarted <-chan string, buildSuccess <-c
 		os.Exit(0)
 	}()
 
+	command := ""
+	done := make(chan error, 1)
+
 	for {
-		eventPath := <-buildStarted
+		select {
+		case eventPath := <-buildStarted:
+			// append %0.s to use format specifier even if not supplied by user
+			// to suppress warning in returned string.
+			command = fmt.Sprintf("%0.s"+commandTemplate, eventPath)
 
-		// append %0.s to use format specifier even if not supplied by user
-		// to suppress warning in returned string.
-		command := fmt.Sprintf("%0.s"+commandTemplate, eventPath)
-
-		if !*flag_command_stop {
-			if !<-buildSuccess {
-				continue
+			if !*flag_command_stop {
+				if !<-buildSuccess {
+					continue
+				}
 			}
-		}
 
-		if currentProcess != nil {
-			killProcess(currentProcess)
-		}
-		if *flag_command_stop {
-			log.Println(okColor("Command stopped. Waiting for build to complete."))
-			if !<-buildSuccess {
+			if currentProcess != nil {
+				killProcess(currentProcess)
+			}
+			if *flag_command_stop {
+				log.Println(okColor("Command stopped. Waiting for build to complete."))
+				if !<-buildSuccess {
+					continue
+				}
+			}
+		case err := <-done:
+			if err == nil {
 				continue
 			}
 		}
 
 		log.Println(okColor("Restarting the given command."))
-		cmd, stdoutPipe, stderrPipe, err := startCommand(command)
 
+		cmd, stdoutPipe, stderrPipe, err := startCommand(command)
 		if err != nil {
 			log.Fatal(failColor("Could not start command: %s", err))
 		}
@@ -352,6 +364,15 @@ func runner(commandTemplate string, buildStarted <-chan string, buildSuccess <-c
 		pipeChan <- stderrPipe
 
 		currentProcess = cmd.Process
+
+		if *flag_restartOnError {
+			go func() {
+				err := cmd.Wait()
+				time.Sleep(time.Duration(*flag_restartTimeout) * time.Second)
+
+				done <- err
+			}()
+		}
 	}
 }
 
