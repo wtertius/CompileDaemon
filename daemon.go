@@ -381,6 +381,10 @@ func runner(commandTemplate string, buildStarted <-chan string, buildSuccess <-c
 }
 
 func killProcess(cmd *exec.Cmd) {
+	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+		return
+	}
+
 	if *flag_gracefulkill {
 		killProcessGracefully(cmd)
 	} else {
@@ -392,15 +396,11 @@ func killProcessHard(cmd *exec.Cmd) {
 	log.Println(okColor("Hard stopping the current process.."))
 
 	if err := cmd.Process.Kill(); err != nil {
-		if cmd.ProcessState.Exited() {
-			return
-		}
 		log.Println(failColor("Warning: could not kill child process. Though it haven't already exited."))
 	}
 
-	if _, err := cmd.Process.Wait(); err != nil {
-		fmt.Printf("err := %s\n", err)
-		log.Fatal(failColor("Could not wait for child process. Aborting due to danger of infinite forks."))
+	if err := cmd.Process.Release(); err != nil {
+		log.Fatal(failColor("Could not release child process. Aborting due to danger of infinite forks."))
 	}
 }
 
