@@ -306,7 +306,7 @@ func startCommand(command string) (cmd *exec.Cmd, stdout io.ReadCloser, stderr i
 // Run the command in the given string and restart it after
 // a message was received on the buildDone channel.
 func runner(commandTemplate string, buildStarted <-chan string, buildSuccess <-chan bool) {
-	var currentProcess *os.Process
+	var currentCmd *exec.Cmd
 	pipeChan := make(chan io.ReadCloser)
 
 	go logger(pipeChan)
@@ -316,18 +316,20 @@ func runner(commandTemplate string, buildStarted <-chan string, buildSuccess <-c
 		signal.Notify(sigChan, fatalSignals...)
 		<-sigChan
 		log.Println(okColor("Received signal, terminating cleanly."))
-		if currentProcess != nil {
-			killProcess(currentProcess)
+		if currentCmd != nil {
+			killProcess(currentCmd)
 		}
 		os.Exit(0)
 	}()
 
 	command := ""
-	done := make(chan error, 1)
+	done := make(chan int)
 
 	for {
 		select {
 		case eventPath := <-buildStarted:
+			flushIntChannelOnce(done)
+
 			// append %0.s to use format specifier even if not supplied by user
 			// to suppress warning in returned string.
 			command = fmt.Sprintf("%0.s"+commandTemplate, eventPath)
@@ -338,8 +340,8 @@ func runner(commandTemplate string, buildStarted <-chan string, buildSuccess <-c
 				}
 			}
 
-			if currentProcess != nil {
-				killProcess(currentProcess)
+			if currentCmd != nil {
+				killProcess(currentCmd)
 			}
 			if *flag_command_stop {
 				log.Println(okColor("Command stopped. Waiting for build to complete."))
@@ -347,8 +349,8 @@ func runner(commandTemplate string, buildStarted <-chan string, buildSuccess <-c
 					continue
 				}
 			}
-		case err := <-done:
-			if err == nil {
+		case pid := <-done:
+			if pid != currentCmd.Process.Pid {
 				continue
 			}
 		}
@@ -363,55 +365,61 @@ func runner(commandTemplate string, buildStarted <-chan string, buildSuccess <-c
 		pipeChan <- stdoutPipe
 		pipeChan <- stderrPipe
 
-		currentProcess = cmd.Process
+		currentCmd = cmd
 
 		if *flag_restartOnError {
-			go func() {
+			go func(pid int) {
 				err := cmd.Wait()
 				time.Sleep(time.Duration(*flag_restartTimeout) * time.Second)
 
-				done <- err
-			}()
+				if err != nil {
+					done <- pid
+				}
+			}(currentCmd.Process.Pid)
 		}
 	}
 }
 
-func killProcess(process *os.Process) {
+func killProcess(cmd *exec.Cmd) {
 	if *flag_gracefulkill {
-		killProcessGracefully(process)
+		killProcessGracefully(cmd)
 	} else {
-		killProcessHard(process)
+		killProcessHard(cmd)
 	}
 }
 
-func killProcessHard(process *os.Process) {
+func killProcessHard(cmd *exec.Cmd) {
 	log.Println(okColor("Hard stopping the current process.."))
 
-	if err := process.Kill(); err != nil {
-		log.Println(failColor("Warning: could not kill child process.  It may have already exited."))
+	if err := cmd.Process.Kill(); err != nil {
+		if cmd.ProcessState.Exited() {
+			return
+		}
+		log.Println(failColor("Warning: could not kill child process. Though it haven't already exited."))
 	}
 
-	if _, err := process.Wait(); err != nil {
+	if _, err := cmd.Process.Wait(); err != nil {
+		fmt.Printf("err := %s\n", err)
 		log.Fatal(failColor("Could not wait for child process. Aborting due to danger of infinite forks."))
 	}
 }
 
-func killProcessGracefully(process *os.Process) {
+func killProcessGracefully(cmd *exec.Cmd) {
 	done := make(chan error, 1)
 	go func() {
 		log.Println(okColor("Gracefully stopping the current process.."))
-		if err := terminateGracefully(process); err != nil {
+		if err := terminateGracefully(cmd.Process); err != nil {
 			done <- err
 			return
 		}
-		_, err := process.Wait()
+		_, err := cmd.Process.Wait()
 		done <- err
 	}()
 
 	select {
 	case <-time.After(time.Duration(*flag_gracefultimeout) * time.Second):
 		log.Println(failColor("Could not gracefully stop the current process, proceeding to hard stop."))
-		killProcessHard(process)
+		killProcessHard(cmd)
 		<-done
 	case err := <-done:
 		if err != nil {
@@ -424,6 +432,16 @@ func flusher(buildStarted <-chan string, buildSuccess <-chan bool) {
 	for {
 		<-buildStarted
 		<-buildSuccess
+	}
+}
+
+func flushIntChannelOnce(c <-chan int) {
+	for {
+		select {
+		case <-c:
+		default:
+			return
+		}
 	}
 }
 
